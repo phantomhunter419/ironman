@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="description" content="Press Line — Ironing pickup scheduling and payment tracking" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="theme-color" content="#F7F6F3" />
+  <title>Press Line</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <style>
+    *,*::before,*::after{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+    html{height:-webkit-fill-available}
+    body{min-height:100vh;min-height:-webkit-fill-available;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#F7F6F3;overscroll-behavior-y:none;-webkit-font-smoothing:antialiased}
+    input,select,textarea,button{font-family:inherit}
+    .mono{font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,monospace}
+    @keyframes _spin{to{transform:rotate(360deg)}}
+    @keyframes _fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+    @keyframes _slide{from{transform:translateY(100%)}to{transform:translateY(0)}}
+    .spin{animation:_spin 1s linear infinite}
+    .fade{animation:_fade .22s ease both}
+    .slide{animation:_slide .3s cubic-bezier(.32,.72,0,1) both}
+    .pt-safe{padding-top:max(16px,env(safe-area-inset-top))}
+    .pb-safe{padding-bottom:max(8px,env(safe-area-inset-bottom))}
+    .pb-safeXL{padding-bottom:max(28px,env(safe-area-inset-bottom))}
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" data-presets="react">
+const{useState,useEffect,useCallback,useRef,useMemo}=React;
+
+/* ═══════════════════════════════════════
+   CONFIG — fill these in (see README.md)
+═══════════════════════════════════════ */
+const SUPABASE_URL      = 'YOUR_SUPABASE_URL';
+const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
+
+const CONFIGURED = !SUPABASE_URL.startsWith('YOUR');
+const sb = CONFIGURED ? supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY) : null;
+const CURRENCY='₹', REMIND=2*24*60*60*1000;
+
+/* ── ICONS ─────────────────────────────── */
+function S({size=16,sw=2,className='',style,children}){
+  return <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24"
+    fill="none" stroke="currentColor" strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round"
+    className={className} style={style}>{children}</svg>;
+}
+const I={
+  Shirt:     p=><S {...p}><path d="M20.38 3.46 16 2a4 4 0 0 1-8 0L3.62 3.46a2 2 0 0 0-1.34 2.23l.58 3.57a1 1 0 0 0 .99.84H6v10c0 1.1.9 2 2 2h8a2 2 0 0 0 2-2V10h2.15a1 1 0 0 0 .99-.84l.58-3.57a2 2 0 0 0-1.34-2.23z"/></S>,
+  Users:     p=><S {...p}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></S>,
+  Lock:      p=><S {...p}><rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></S>,
+  Left:      p=><S {...p}><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></S>,
+  Plus:      p=><S {...p}><path d="M5 12h14"/><path d="M12 5v14"/></S>,
+  Phone:     p=><S {...p}><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.15 14 19.79 19.79 0 0 1 1.09 5.38 2 2 0 0 1 3.07 3h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.09 10a16 16 0 0 0 6.91 6.91l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></S>,
+  Pin:       p=><S {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></S>,
+  Clock:     p=><S {...p}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></S>,
+  Check:     p=><S {...p}><path d="M20 6 9 17l-5-5"/></S>,
+  X:         p=><S {...p}><path d="M18 6 6 18"/><path d="m6 6 12 12"/></S>,
+  Upload:    p=><S {...p}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></S>,
+  Img:       p=><S {...p}><rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></S>,
+  Alert:     p=><S {...p}><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></S>,
+  Gear:      p=><S {...p}><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></S>,
+  Search:    p=><S {...p}><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></S>,
+  Cal:       p=><S {...p}><rect width="18" height="18" x="3" y="4" rx="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></S>,
+  Rupee:     p=><S {...p}><path d="M6 3h12"/><path d="M6 8h12"/><path d="m6 13 8.5 8"/><path d="M6 13h3"/><path d="M9 13c6.667 0 6.667-10 0-10"/></S>,
+  Spin:      ({size=16,className=''})=><svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`spin ${className}`}><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>,
+  Ok:        p=><S {...p}><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></S>,
+  PhCall:    p=><S {...p}><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.15 14 19.79 19.79 0 0 1 1.09 5.38 2 2 0 0 1 3.07 3h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.09 10a16 16 0 0 0 6.91 6.91l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/><path d="M17.5 2.5c1.5 1.5 2 3.5 1.5 5.5"/><path d="M21 1c2 2.5 2.5 6 1 9"/></S>,
+  Trash:     p=><S {...p}><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></S>,
+  Refresh:   p=><S {...p}><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></S>,
+  List:      p=><S {...p}><rect width="8" height="4" x="8" y="2" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><line x1="12" x2="16" y1="11" y2="11"/><line x1="12" x2="16" y1="15" y2="15"/><line x1="8" x2="8.01" y1="11" y2="11"/><line x1="8" x2="8.01" y1="15" y2="15"/></S>,
+  Pkg:       p=><S {...p}><path d="m16 16 2 2 4-4"/><path d="M21 10V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 2 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l2-1.14"/><path d="M16.5 9.4 7.55 4.24"/><polyline points="3.29 7 12 12 20.71 7"/><line x1="12" x2="12" y1="22" y2="12"/></S>,
+  Chev:      p=><S {...p}><path d="m6 9 6 6 6-6"/></S>,
+  Out:       p=><S {...p}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></S>,
+  GH:        p=><S {...p}><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></S>,
+};
+
+/* ── UTILITY ────────────────────────────── */
+function localNow(){const d=new Date();d.setMinutes(d.getMinutes()-d.getTimezoneOffset());return d.toISOString().slice(0,16);}
+function fmt(iso){if(!iso)return'—';return new Date(iso).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});}
+function daysAgo(iso){return Math.floor((Date.now()-new Date(iso).getTime())/86400000);}
+function compress(file){return new Promise((res,rej)=>{const r=new FileReader();r.onload=e=>{const img=new Image();img.onload=()=>{const sc=Math.min(1,800/img.width),c=document.createElement('canvas');c.width=Math.max(1,Math.round(img.width*sc));c.height=Math.max(1,Math.round(img.height*sc));c.getContext('2d').drawImage(img,0,0,c.width,c.height);c.toBlob(b=>b?res(b):rej(Error('failed')),'image/jpeg',.72);};img.onerror=()=>rej(Error('bad image'));img.src=e.target.result;};r.onerror=()=>rej(Error('bad file'));r.readAsDataURL(file);});}
+
+/* ── SUPABASE DATA ──────────────────────── */
+function toOrder(r){return{id:r.id,name:r.name,phone:r.phone,areaId:r.area_id,areaName:r.area_name,numClothes:r.num_clothes,rate:r.rate,bill:r.bill,scheduledAt:r.scheduled_at,paymentTiming:r.payment_timing,status:r.status,ironingDoneAt:r.ironing_done_at,paymentStatus:r.payment_status,hasScreenshot:r.has_screenshot,createdAt:r.created_at};}
+async function dbAreas(){const{data,error}=await sb.from('areas').select('*').order('name');if(error)throw error;return data;}
+async function dbSaveArea(a){if(a.id){const{error}=await sb.from('areas').update({name:a.name,rate:a.rate}).eq('id',a.id);if(error)throw error;}else{const{data,error}=await sb.from('areas').insert({name:a.name,rate:a.rate}).select().single();if(error)throw error;return data;}}
+async function dbDeleteArea(id){const{error}=await sb.from('areas').delete().eq('id',id);if(error)throw error;}
+async function dbOrders(){const{data,error}=await sb.from('orders').select('*').order('created_at',{ascending:false});if(error)throw error;return data.map(toOrder);}
+async function dbCreate(o){const{data,error}=await sb.from('orders').insert({name:o.name,phone:o.phone,area_id:o.areaId,area_name:o.areaName,num_clothes:o.numClothes,rate:o.rate,bill:o.bill,scheduled_at:o.scheduledAt,payment_timing:o.paymentTiming,status:'scheduled',payment_status:'incomplete',has_screenshot:false}).select().single();if(error)throw error;return toOrder(data);}
+async function dbPatch(id,p){const m={};if(p.status!==undefined)m.status=p.status;if(p.ironingDoneAt!==undefined)m.ironing_done_at=p.ironingDoneAt;if(p.paymentStatus!==undefined)m.payment_status=p.paymentStatus;if(p.hasScreenshot!==undefined)m.has_screenshot=p.hasScreenshot;const{data,error}=await sb.from('orders').update(m).eq('id',id).select().single();if(error)throw error;return toOrder(data);}
+function shotUrl(id){return sb.storage.from('screenshots').getPublicUrl(id).data.publicUrl;}
+async function uploadShot(id,blob){const{error}=await sb.storage.from('screenshots').upload(id,blob,{contentType:'image/jpeg',upsert:true});if(error)throw error;}
+
+/* ── ATOMS ──────────────────────────────── */
+const inp="w-full rounded-xl border border-[#1C1B1A]/15 bg-white px-3.5 py-3 text-[15px] text-[#1C1B1A] outline-none focus:border-[#3D5A80] focus:ring-2 focus:ring-[#3D5A80]/15 transition-colors";
+
+function Toast({text}){if(!text)return null;return<div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 bg-[#1C1B1A] text-[#F7F6F3] text-sm px-5 py-2.5 rounded-full shadow-xl max-w-[88vw] text-center fade pointer-events-none">{text}</div>;}
+function Line(){return<div className="h-[3px] w-full" style={{background:'linear-gradient(90deg,#C1440E,#3D5A80)'}}/>;}
+function SBadge({s}){const m={scheduled:['Scheduled','bg-[#3D5A80]/10 text-[#3D5A80]'],fulfilled:['Ironing done','bg-[#1C1B1A]/8 text-[#1C1B1A]/70']};const[l,c]=m[s]||m.scheduled;return<span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full ${c}`}>{l}</span>;}
+function PBadge({s}){const m={incomplete:['Unpaid','bg-red-100 text-red-700'],pending:['Pending review','bg-amber-100 text-amber-800'],completed:['Paid ✓','bg-[#2F6844]/10 text-[#2F6844]']};const[l,c]=m[s]||m.incomplete;return<span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full ${c}`}>{l}</span>;}
+function Chip({active,onClick,children,tint='#1C1B1A'}){return<button type="button" onClick={onClick} aria-pressed={active} className={`shrink-0 flex items-center gap-1 text-xs font-semibold rounded-full pl-2.5 pr-3 py-1.5 border transition-all active:scale-[0.95] ${active?'text-white border-transparent shadow-sm':'bg-white border-[#1C1B1A]/14 text-[#1C1B1A]/55'}`} style={active?{background:tint}:undefined}>{active?<I.Check size={11} sw={3}/>:<span className="w-3 h-3 rounded-full border border-current opacity-30"/>}{children}</button>;}
+function Stat({Icon,label,value,tint}){return<div className="flex-1 min-w-0 rounded-2xl bg-white border border-[#1C1B1A]/8 p-3.5"><Icon size={16} style={{color:tint}}/><div className="mono text-[26px] font-bold text-[#1C1B1A] mt-2 leading-none">{value}</div><div className="text-[11px] text-[#1C1B1A]/50 mt-1 leading-tight">{label}</div></div>;}
+function Empty({title,body}){return<div className="text-center py-12 px-4"><div className="text-sm font-semibold text-[#1C1B1A] mb-1">{title}</div><div className="text-sm text-[#1C1B1A]/50 leading-relaxed">{body}</div></div>;}
+function Field({label,children}){return<div><div className="text-[11px] font-semibold text-[#1C1B1A]/50 mb-1.5 ml-0.5 uppercase tracking-wide">{label}</div>{children}</div>;}
+function Err({msg}){if(!msg)return null;return<div className="flex items-start gap-2 text-red-700 text-sm bg-red-50 border border-red-100 rounded-xl p-3"><I.Alert size={15} className="mt-0.5 shrink-0"/><span>{msg}</span></div>;}
+function Header({title,onBack,onRefresh,refreshing}){return<div className="sticky top-0 z-40 bg-[#F7F6F3]"><div className="flex items-center justify-between px-4 pb-3 pt-safe"><div className="flex items-center gap-2">{onBack&&<button type="button" onClick={onBack} className="p-1.5 -ml-1.5 text-[#1C1B1A]/60 active:opacity-50 transition-opacity"><I.Left size={20}/></button>}<span className="font-bold text-[17px] text-[#1C1B1A]">{title}</span></div>{onRefresh&&<button type="button" onClick={onRefresh} className="p-1.5 text-[#1C1B1A]/50 active:opacity-50 transition-opacity"><I.Refresh size={17} className={refreshing?'spin':''}/></button>}</div><Line/></div>;}
+function TabBar({tabs,active,onChange}){return<div className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-[#1C1B1A]/10 flex px-1 pb-safe">{tabs.map(({key,label,Icon})=>{const on=active===key;return<button key={key} type="button" onClick={()=>onChange(key)} aria-pressed={on} className={`flex-1 flex flex-col items-center gap-1 pt-2 pb-1 active:scale-[0.94] transition-transform ${on?'text-[#C1440E]':'text-[#1C1B1A]/40'}`}><span className={`flex items-center justify-center w-9 h-7 rounded-full transition-colors ${on?'bg-[#C1440E]/12':''}`}><Icon size={18}/></span><span className="text-[10px] font-semibold">{label}</span></button>;})}</div>;}
+
+/* ── BOOKING FORM ───────────────────────── */
+function BookingForm({areas,onCreateOrder,onDone,context}){
+  const[step,setStep]=useState('info');
+  const[name,setName]=useState('');const[phone,setPhone]=useState('');const[areaId,setAreaId]=useState(areas[0]?.id||'');
+  const[qty,setQty]=useState(1);const[when,setWhen]=useState('');const[pay,setPay]=useState('dropoff');
+  const[busy,setBusy]=useState(false);const[confirmed,setConfirmed]=useState(null);const[err,setErr]=useState('');
+  useEffect(()=>{if(!areaId&&areas.length)setAreaId(areas[0].id);},[areas]);
+  const area=areas.find(a=>a.id===areaId),rate=area?.rate||0,bill=rate*(Number(qty)||0);
+  function goNext(){setErr('');if(!name.trim())return setErr('Enter the customer\u2019s name.');if(phone.replace(/\D/g,'').length<10)return setErr('Enter a valid 10-digit phone number.');if(!areaId)return setErr('Select an area.');setStep('schedule');}
+  async function submit(){setErr('');if(!qty||qty<1)return setErr('Enter number of clothes.');if(!when)return setErr('Pick a pickup date & time.');setBusy(true);try{const o=await onCreateOrder({name:name.trim(),phone:phone.replace(/\D/g,''),areaId,areaName:area?.name||'',numClothes:Number(qty),rate,bill,scheduledAt:when,paymentTiming:pay});setConfirmed(o);}catch{setErr('Something went wrong \u2014 please try again.');}finally{setBusy(false);}}
+  function reset(){if(onDone)return onDone();setConfirmed(null);setStep('info');setName('');setPhone('');setQty(1);setWhen('');}
+  if(!areas.length)return<Empty title="Not set up yet" body="Ask the admin to add service areas in Settings first."/>;
+  if(confirmed)return<div className="space-y-4 fade"><div className="rounded-2xl bg-white border border-[#1C1B1A]/10 p-5"><div className="flex items-center gap-2.5 text-[#2F6844] mb-4"><I.Ok size={22}/><span className="font-bold text-base">Pickup scheduled!</span></div><div className="space-y-2.5 text-sm">{[['Name',confirmed.name],['Area',confirmed.areaName],['Clothes',confirmed.numClothes],['Pickup',fmt(confirmed.scheduledAt)],['Payment',confirmed.paymentTiming==='pickup'?'At pickup':'At drop-off']].map(([k,v])=><div key={k} className="flex justify-between"><span className="text-[#1C1B1A]/50">{k}</span><span className="font-medium text-[#1C1B1A]">{v}</span></div>)}</div><div className="mt-4 pt-4 border-t border-[#1C1B1A]/10 flex justify-between items-center"><span className="text-sm text-[#1C1B1A]/50">Total bill</span><span className="mono text-2xl font-bold text-[#1C1B1A]">{CURRENCY}{confirmed.bill}</span></div></div><button onClick={reset} className="w-full rounded-xl bg-[#1C1B1A] text-white font-semibold py-3.5 active:scale-[0.98] transition-transform">{context==='admin'?'Done':'Book another'}</button></div>;
+  if(step==='info')return<div className="space-y-4"><div className="text-[11px] font-semibold text-[#1C1B1A]/40 flex items-center gap-1.5"><span className="text-[#C1440E] font-bold">Step 1</span><span>&middot;</span><span>Your details</span></div><Field label="Customer name"><input className={inp} value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. Anita Rao"/></Field><Field label="Phone number"><input className={inp} type="tel" value={phone} onChange={e=>setPhone(e.target.value)} placeholder="10-digit mobile number"/></Field><Field label="Service area"><select className={inp} value={areaId} onChange={e=>setAreaId(e.target.value)}>{areas.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select></Field><div className="rounded-2xl p-4 space-y-1" style={{background:'#EDE9E1'}}><div className="text-[11px] font-semibold text-[#1C1B1A]/50 uppercase tracking-wide flex items-center gap-1.5"><I.Rupee size={12}/>Rate</div><div className="flex justify-between items-baseline"><span className="text-sm text-[#1C1B1A]/60">Cost per garment</span><span className="mono text-[28px] font-bold text-[#1C1B1A] leading-none">{CURRENCY}{rate}</span></div><p className="text-xs text-[#1C1B1A]/45 mt-1">Pickup & delivery included &mdash; no extra charge.</p></div><Err msg={err}/><button type="button" onClick={goNext} className="w-full rounded-xl bg-[#C1440E] text-white font-semibold py-3.5 active:scale-[0.98] transition-transform shadow-sm">Continue &rarr;</button></div>;
+  return<div className="space-y-4"><button type="button" onClick={()=>setStep('info')} className="flex items-center gap-1.5 text-[11px] font-semibold text-[#1C1B1A]/40"><I.Left size={12}/><span className="text-[#C1440E] font-bold">Step 2</span><span>&middot;</span><span>Schedule pickup</span></button><div className="rounded-xl bg-white border border-[#1C1B1A]/8 px-3.5 py-2.5 flex items-center justify-between text-sm"><span className="font-semibold text-[#1C1B1A]">{name}</span><span className="text-[#1C1B1A]/45 flex items-center gap-1"><I.Pin size={12}/>{area?.name}</span></div><Field label="Number of clothes"><input className={inp} type="number" min={1} value={qty} onChange={e=>setQty(e.target.value)}/></Field><Field label="Pickup date & time"><input className={inp} type="datetime-local" min={localNow()} value={when} onChange={e=>setWhen(e.target.value)}/></Field><Field label="When do you pay?"><div className="grid grid-cols-2 gap-2">{[['pickup','At pickup'],['dropoff','At drop-off']].map(([val,label])=>{const on=pay===val;return<button key={val} type="button" onClick={()=>setPay(val)} aria-pressed={on} className={`rounded-xl py-3 text-sm font-semibold border transition-all active:scale-[0.97] ${on?'bg-[#3D5A80] text-white border-[#3D5A80] shadow-sm':'bg-white text-[#1C1B1A]/60 border-[#1C1B1A]/15'}`}>{on&&<I.Check size={13} sw={3} className="inline mr-1 -mt-0.5"/>}{label}</button>;})}</div></Field><div className="rounded-2xl p-4" style={{background:'#EDE9E1'}}><div className="flex justify-between text-sm text-[#1C1B1A]/60 mb-1.5"><span>Rate</span><span className="mono">{CURRENCY}{rate}/garment</span></div><div className="flex justify-between items-center"><span className="font-semibold text-[#1C1B1A]">Total bill</span><span className="mono text-[28px] font-bold text-[#1C1B1A] leading-none">{CURRENCY}{bill||0}</span></div></div><Err msg={err}/><button type="button" onClick={submit} disabled={busy} className="w-full rounded-xl bg-[#C1440E] text-white font-semibold py-3.5 flex items-center justify-center gap-2 disabled:opacity-60 active:scale-[0.98] transition-transform shadow-sm">{busy&&<I.Spin size={16}/>}Schedule pickup</button></div>;
+}
+
+/* ── MY ORDERS (customer) ───────────────── */
+function MyOrders(){
+  const[phone,setPhone]=useState('');const[orders,setOrders]=useState([]);const[loading,setLoading]=useState(false);const[searched,setSearched]=useState(false);const[uploading,setUploading]=useState({});const refs=useRef({});
+  async function search(){const d=phone.replace(/\D/g,'');if(d.length<10)return;setLoading(true);try{const{data}=await sb.from('orders').select('*').eq('phone',d).order('created_at',{ascending:false});setOrders((data||[]).map(toOrder));}finally{setLoading(false);setSearched(true);}}
+  async function upload(orderId,file){setUploading(u=>({...u,[orderId]:true}));try{const blob=await compress(file);await uploadShot(orderId,blob);await sb.from('orders').update({has_screenshot:true,payment_status:'pending'}).eq('id',orderId);setOrders(p=>p.map(o=>o.id===orderId?{...o,hasScreenshot:true,paymentStatus:'pending'}:o));}catch{alert('Upload failed — please try again.');}finally{setUploading(u=>({...u,[orderId]:false}));}}
+  return<div className="space-y-4"><Field label="Your phone number"><div className="flex gap-2"><div className="relative flex-1"><I.Phone size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#1C1B1A]/35"/><input className={`${inp} pl-10`} type="tel" value={phone} onChange={e=>setPhone(e.target.value)} onKeyDown={e=>e.key==='Enter'&&search()} placeholder="Number used to book"/></div><button type="button" onClick={search} disabled={phone.replace(/\D/g,'').length<10||loading} className="shrink-0 rounded-xl bg-[#1C1B1A] text-white font-semibold px-4 text-sm disabled:opacity-40 active:scale-[0.97] transition-transform">{loading?<I.Spin size={16}/>:'Find'}</button></div></Field>{searched&&orders.length===0&&<Empty title="No orders found" body="Double-check the number, or switch to &lsquo;Book pickup&rsquo; to start."/>}<div className="space-y-3">{orders.map(o=><div key={o.id} className="rounded-2xl bg-white border border-[#1C1B1A]/10 p-4 space-y-3 fade"><div className="flex items-start justify-between"><div><div className="font-semibold text-[#1C1B1A]">{o.numClothes} clothes &middot; {o.areaName}</div><div className="text-xs text-[#1C1B1A]/50 mt-0.5">{fmt(o.scheduledAt)}</div></div><div className="mono text-lg font-bold text-[#1C1B1A]">{CURRENCY}{o.bill}</div></div><div className="flex flex-wrap gap-1.5"><SBadge s={o.status}/><PBadge s={o.paymentStatus}/></div>{o.paymentStatus==='pending'?<div className="flex items-center gap-2 text-xs text-amber-800 bg-amber-50 rounded-xl px-3 py-2.5"><I.Clock size={14}/>Screenshot uploaded &mdash; waiting for admin to approve.</div>:o.paymentStatus==='completed'?null:<div><input ref={el=>refs.current[o.id]=el} type="file" accept="image/*" hidden onChange={e=>{const f=e.target.files?.[0];e.target.value='';if(f)upload(o.id,f);}}/><button type="button" onClick={()=>refs.current[o.id]?.click()} disabled={uploading[o.id]} className="w-full flex items-center justify-center gap-2 rounded-xl border-2 border-dashed border-[#3D5A80]/50 text-[#3D5A80] text-sm font-semibold py-3 disabled:opacity-60 active:scale-[0.98] transition-transform">{uploading[o.id]?<I.Spin size={15}/>:<I.Upload size={15}/>}Upload payment screenshot</button></div>}</div>)}</div></div>;
+}
+
+/* ── DASHBOARD (admin) ──────────────────── */
+function Dashboard({orders}){
+  const total=orders.length,done=orders.filter(o=>o.status==='fulfilled').length,await_=orders.filter(o=>o.paymentStatus!=='completed').length;
+  const overdue=orders.filter(o=>o.status==='fulfilled'&&o.paymentStatus!=='completed'&&o.ironingDoneAt&&daysAgo(o.ironingDoneAt)>=2).sort((a,b)=>new Date(a.ironingDoneAt)-new Date(b.ironingDoneAt));
+  return<div className="space-y-5"><div className="flex gap-2.5"><Stat Icon={I.List} label="Total orders" value={total} tint="#3D5A80"/><Stat Icon={I.Pkg} label="Fulfilled" value={done} tint="#2F6844"/><Stat Icon={I.Rupee} label="Awaiting pay" value={await_} tint="#C1440E"/></div><div><div className="flex items-center gap-2 mb-3"><I.PhCall size={15} className="text-[#C1440E]"/><span className="font-semibold text-sm text-[#1C1B1A]">Needs a call</span>{overdue.length>0&&<span className="text-[11px] font-bold bg-[#C1440E]/10 text-[#C1440E] rounded-full px-2 py-0.5">{overdue.length}</span>}</div>{overdue.length===0?<div className="text-sm text-[#1C1B1A]/50 bg-white rounded-2xl border border-[#1C1B1A]/8 p-4 leading-relaxed">No overdue payments. Reminders appear here when ironing&rsquo;s done 2+ days ago and payment isn&rsquo;t confirmed.</div>:<div className="space-y-2">{overdue.map(o=><div key={o.id} className="rounded-2xl bg-white border border-[#C1440E]/25 p-3.5 flex items-center justify-between gap-3"><div className="min-w-0"><div className="font-semibold text-[#1C1B1A] truncate">{o.name}</div><div className="text-xs text-[#1C1B1A]/50 mt-0.5">{o.areaName} &middot; {daysAgo(o.ironingDoneAt)}d since done &middot; {CURRENCY}{o.bill}</div></div><a href={`tel:${o.phone}`} className="shrink-0 flex items-center gap-1.5 bg-[#C1440E] text-white text-xs font-bold rounded-full px-3.5 py-2 active:opacity-80 transition-opacity"><I.Phone size={13}/>Call</a></div>)}</div>}</div></div>;
+}
+
+/* ── ORDER CARD (admin) ─────────────────── */
+function OrderCard({order,onMarkDone,onApprove,onReject}){
+  const[open,setOpen]=useState(false);
+  const overdue=order.status==='fulfilled'&&order.paymentStatus!=='completed'&&order.ironingDoneAt&&daysAgo(order.ironingDoneAt)>=2;
+  return<div className={`rounded-2xl bg-white border p-3.5 ${overdue?'border-[#C1440E]/30 shadow-sm':'border-[#1C1B1A]/8'}`}><div className="flex items-start justify-between gap-3 cursor-pointer select-none" onClick={()=>setOpen(v=>!v)}><div className="min-w-0"><div className="font-semibold text-[#1C1B1A] truncate">{order.name}</div><div className="text-xs text-[#1C1B1A]/50 mt-0.5 flex items-center gap-1"><I.Pin size={11}/>{order.areaName} &middot; {order.numClothes} clothes</div><div className="text-xs text-[#1C1B1A]/50 flex items-center gap-1 mt-0.5"><I.Cal size={11}/>{fmt(order.scheduledAt)}</div></div><div className="text-right shrink-0"><div className="mono font-bold text-[#1C1B1A]">{CURRENCY}{order.bill}</div><I.Chev size={16} className={`ml-auto mt-1.5 text-[#1C1B1A]/35 transition-transform duration-200 ${open?'rotate-180':''}`}/></div></div><div className="flex flex-wrap gap-1.5 mt-2.5"><SBadge s={order.status}/><PBadge s={order.paymentStatus}/><span className="text-[11px] px-2 py-1 rounded-full bg-[#1C1B1A]/5 text-[#1C1B1A]/55">Pays at {order.paymentTiming==='pickup'?'pickup':'drop-off'}</span></div>{open&&<div className="mt-3.5 pt-3.5 border-t border-[#1C1B1A]/8 space-y-3 fade"><a href={`tel:${order.phone}`} className="flex items-center gap-2 text-sm text-[#3D5A80] font-semibold active:opacity-60"><I.Phone size={15}/>{order.phone}</a>{order.status==='scheduled'&&<button type="button" onClick={()=>onMarkDone(order.id)} className="w-full rounded-xl bg-[#1C1B1A] text-white text-sm font-semibold py-3 active:scale-[0.98] transition-transform">&checkmark; Mark ironing done</button>}{order.status==='fulfilled'&&order.ironingDoneAt&&<div className="text-xs text-[#1C1B1A]/45">Ironing done {fmt(order.ironingDoneAt)}</div>}{order.hasScreenshot?<div className="space-y-2.5"><div className="text-xs font-semibold text-[#1C1B1A]/50 uppercase tracking-wide">Payment screenshot</div><img src={shotUrl(order.id)} alt="Payment" className="w-full rounded-xl border border-[#1C1B1A]/10 bg-[#1C1B1A]/4" loading="lazy"/>{order.paymentStatus==='pending'&&<div className="grid grid-cols-2 gap-2"><button type="button" onClick={()=>onApprove(order.id)} className="flex items-center justify-center gap-1.5 rounded-xl bg-[#2F6844] text-white text-sm font-bold py-3 active:scale-[0.98] transition-transform"><I.Check size={15} sw={2.5}/>Approve</button><button type="button" onClick={()=>onReject(order.id)} className="flex items-center justify-center gap-1.5 rounded-xl border border-[#1C1B1A]/15 text-[#1C1B1A]/70 text-sm font-semibold py-3 active:scale-[0.98] transition-transform"><I.X size={15}/>Reject</button></div>}</div>:<div className="flex items-center gap-2 text-xs text-[#1C1B1A]/45 bg-[#1C1B1A]/4 rounded-xl px-3 py-2.5"><I.Img size={14}/>No payment screenshot yet.</div>}</div>}</div>;
+}
+
+/* ── ORDERS TAB (admin) ─────────────────── */
+function OrdersTab({orders,onMarkDone,onApprove,onReject,onNew}){
+  const[sf,setSf]=useState('all');const[pf,setPf]=useState('all');const[q,setQ]=useState('');
+  const filtered=orders.filter(o=>sf==='all'||o.status===sf).filter(o=>pf==='all'||o.paymentStatus===pf).filter(o=>!q||o.name.toLowerCase().includes(q.toLowerCase())||o.phone.includes(q)).sort((a,b)=>new Date(a.scheduledAt)-new Date(b.scheduledAt));
+  return<div className="space-y-3.5"><div className="flex gap-2"><div className="relative flex-1"><I.Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#1C1B1A]/35"/><input className={`${inp} pl-9 py-2.5`} value={q} onChange={e=>setQ(e.target.value)} placeholder="Search name or phone&hellip;"/></div><button type="button" onClick={onNew} className="shrink-0 flex items-center gap-1.5 rounded-xl bg-[#C1440E] text-white text-sm font-bold px-3.5 active:scale-[0.97] transition-transform"><I.Plus size={16}/>New</button></div><div className="flex gap-1.5 overflow-x-auto pb-1 -mx-0.5 px-0.5" style={{WebkitOverflowScrolling:'touch'}}>{[['all','All'],['scheduled','Scheduled'],['fulfilled','Done']].map(([v,l])=><Chip key={v} active={sf===v} onClick={()=>setSf(v)} tint="#1C1B1A">{l}</Chip>)}<div className="w-px bg-[#1C1B1A]/10 mx-0.5 shrink-0"/>{[['all','Any pay'],['incomplete','Unpaid'],['pending','Pending'],['completed','Paid']].map(([v,l])=><Chip key={v} active={pf===v} onClick={()=>setPf(v)} tint="#3D5A80">{l}</Chip>)}</div>{filtered.length===0?<Empty title="No orders match" body="Adjust the filters or add a new order."/>:<div className="space-y-2.5">{filtered.map(o=><OrderCard key={o.id} order={o} onMarkDone={onMarkDone} onApprove={onApprove} onReject={onReject}/>)}</div>}</div>;
+}
+
+/* ── CLIENTS TAB (admin) ────────────────── */
+function ClientsTab({orders}){
+  const[q,setQ]=useState('');
+  const grouped=useMemo(()=>{const map={};orders.forEach(o=>{if(!map[o.phone])map[o.phone]={id:o.id,name:o.name,phone:o.phone,area:o.areaName};});const clients=Object.values(map).filter(c=>!q||c.name.toLowerCase().includes(q.toLowerCase())||c.phone.includes(q));return clients.reduce((acc,c)=>{(acc[c.area]=acc[c.area]||[]).push(c);return acc;},{});},[orders,q]);
+  const areas=Object.keys(grouped).sort();
+  return<div className="space-y-4"><div className="relative"><I.Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#1C1B1A]/35"/><input className={`${inp} pl-9 py-2.5`} value={q} onChange={e=>setQ(e.target.value)} placeholder="Search clients&hellip;"/></div>{areas.length===0?<Empty title="No clients yet" body="Clients appear here once orders are placed."/>:areas.map(area=><div key={area}><div className="flex items-center gap-2 mb-2"><I.Pin size={13} className="text-[#3D5A80]"/><span className="font-semibold text-sm text-[#1C1B1A]">{area}</span><span className="text-[11px] text-[#1C1B1A]/40">{grouped[area].length}</span></div><div className="rounded-2xl bg-white border border-[#1C1B1A]/8 divide-y divide-[#1C1B1A]/6">{grouped[area].map(c=><a key={c.id} href={`tel:${c.phone}`} className="flex items-center justify-between px-4 py-3 active:bg-[#1C1B1A]/4 transition-colors"><span className="text-sm font-medium text-[#1C1B1A]">{c.name}</span><span className="flex items-center gap-1.5 text-sm text-[#3D5A80] font-medium"><I.Phone size={13}/>{c.phone}</span></a>)}</div></div>)}</div>;
+}
+
+/* ── SETTINGS TAB (admin) ───────────────── */
+function SettingsTab({areas:init,onAreasChange,showToast,user}){
+  const[areas,setAreas]=useState(init);const[newName,setNewName]=useState('');const[newRate,setNewRate]=useState('');const[saving,setSaving]=useState(false);
+  useEffect(()=>setAreas(init),[init]);
+  function update(id,patch){setAreas(p=>p.map(a=>a.id===id?{...a,...patch}:a));}
+  async function save(area){try{await dbSaveArea(area);showToast('Saved');}catch{showToast('Save failed — try again');}}
+  async function add(){if(!newName.trim()||!newRate)return;setSaving(true);try{await dbSaveArea({name:newName.trim(),rate:Number(newRate)});setNewName('');setNewRate('');await onAreasChange();showToast('Area added');}catch{showToast('Failed to add');}finally{setSaving(false);}}
+  async function remove(id){setSaving(true);try{await dbDeleteArea(id);setAreas(a=>a.filter(x=>x.id!==id));await onAreasChange();showToast('Area removed');}catch{showToast('Failed to remove');}finally{setSaving(false);}}
+  return<div className="space-y-6"><div><div className="font-bold text-sm text-[#1C1B1A] mb-3">Areas & rates</div><div className="space-y-2">{areas.map(a=><div key={a.id} className="flex items-center gap-2 bg-white rounded-xl border border-[#1C1B1A]/8 p-2.5"><input className={`${inp} py-2 flex-1 text-sm`} value={a.name} onChange={e=>update(a.id,{name:e.target.value})} onBlur={()=>save(a)}/><div className="flex items-center gap-1 shrink-0"><span className="text-sm text-[#1C1B1A]/40 font-medium">{CURRENCY}</span><input className={`${inp} py-2 w-16 text-sm`} type="number" value={a.rate} onChange={e=>update(a.id,{rate:Number(e.target.value)})} onBlur={()=>save(a)}/></div><button type="button" onClick={()=>remove(a.id)} className="shrink-0 text-[#C1440E]/70 p-1.5 active:opacity-60"><I.Trash size={16}/></button></div>)}</div><div className="flex items-center gap-2 mt-2.5"><input className={`${inp} py-2 text-sm`} placeholder="New area name" value={newName} onChange={e=>setNewName(e.target.value)}/><input className={`${inp} py-2 w-20 text-sm`} type="number" placeholder="Rate" value={newRate} onChange={e=>setNewRate(e.target.value)}/><button type="button" onClick={add} disabled={saving||!newName.trim()||!newRate} className="shrink-0 rounded-xl bg-[#1C1B1A] text-white p-2.5 disabled:opacity-40 active:scale-[0.97] transition-transform"><I.Plus size={16}/></button></div></div>{user&&<div className="bg-white rounded-2xl border border-[#1C1B1A]/8 p-4 space-y-3"><div><div className="text-sm font-bold text-[#1C1B1A]">Admin account</div><div className="text-xs text-[#1C1B1A]/50 mt-0.5 truncate">{user.email||user.user_metadata?.user_name||'Signed in'}</div></div><button type="button" onClick={()=>sb.auth.signOut()} className="flex items-center gap-2 text-sm font-semibold text-[#C1440E] active:opacity-60 transition-opacity"><I.Out size={15}/>Sign out</button></div>}</div>;
+}
+
+/* ── AUTH GATE ──────────────────────────── */
+function AuthGate(){
+  const[loading,setLoading]=useState('');
+  const redir=window.location.origin+window.location.pathname;
+  async function signIn(p){setLoading(p);await sb.auth.signInWithOAuth({provider:p,options:{redirectTo:redir}});}
+  return<div className="px-5 pt-6 space-y-5"><div className="text-center space-y-2.5"><div className="mx-auto w-16 h-16 rounded-2xl bg-[#1C1B1A] flex items-center justify-center"><I.Lock size={26} className="text-white"/></div><div className="font-bold text-xl text-[#1C1B1A]">Admin login</div><div className="text-sm text-[#1C1B1A]/55 leading-relaxed max-w-xs mx-auto">Sign in with your Google or GitHub account to access the admin panel.</div></div><div className="space-y-3 pt-1"><button type="button" onClick={()=>signIn('google')} disabled={!!loading} className="w-full flex items-center justify-center gap-3 rounded-xl border border-[#1C1B1A]/15 bg-white py-4 text-[15px] font-semibold text-[#1C1B1A] shadow-sm disabled:opacity-60 active:scale-[0.98] transition-all">{loading==='google'?<I.Spin size={19}/>:<svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>}Continue with Google</button><button type="button" onClick={()=>signIn('github')} disabled={!!loading} className="w-full flex items-center justify-center gap-3 rounded-xl border border-[#1C1B1A]/15 bg-white py-4 text-[15px] font-semibold text-[#1C1B1A] shadow-sm disabled:opacity-60 active:scale-[0.98] transition-all">{loading==='github'?<I.Spin size={19}/>:<I.GH size={20}/>}Continue with GitHub</button></div><p className="text-center text-xs text-[#1C1B1A]/35 pt-1">Only approved accounts can access the admin panel.</p></div>;
+}
+
+/* ── SETUP SCREEN ───────────────────────── */
+function Setup(){return<div className="min-h-screen flex flex-col items-center justify-center px-7 text-center space-y-4"><div className="w-16 h-16 rounded-2xl bg-[#C1440E] flex items-center justify-center"><I.Gear size={28} className="text-white"/></div><h1 className="font-bold text-xl text-[#1C1B1A]">Setup required</h1><p className="text-sm text-[#1C1B1A]/60 leading-relaxed max-w-sm">Open <code className="bg-[#1C1B1A]/8 px-1.5 py-0.5 rounded mono text-xs">index.html</code> and replace <code className="bg-[#1C1B1A]/8 px-1.5 py-0.5 rounded mono text-xs">YOUR_SUPABASE_URL</code> and <code className="bg-[#1C1B1A]/8 px-1.5 py-0.5 rounded mono text-xs">YOUR_SUPABASE_ANON_KEY</code> near the top of the script. Follow <strong>README.md</strong> for all steps.</p></div>;}
+
+/* ═══════════════════════════════════════
+   MAIN APP
+═══════════════════════════════════════ */
+function App(){
+  const[user,setUser]=useState(null);const[ready,setReady]=useState(false);
+  const[mode,setMode]=useState('landing');const[aTab,setATab]=useState('dashboard');const[cTab,setCTab]=useState('book');const[showNew,setShowNew]=useState(false);
+  const[areas,setAreas]=useState([]);const[orders,setOrders]=useState([]);const[oLoading,setOL]=useState(false);const[refreshing,setRef]=useState(false);const[toast,setToast]=useState('');
+  const showToast=useCallback(m=>{setToast(m);setTimeout(()=>setToast(''),2800);},[]);
+
+  useEffect(()=>{
+    if(!CONFIGURED){setReady(true);return;}
+    sb.auth.getSession().then(({data:{session}})=>{const u=session?.user??null;setUser(u);if(u)setMode('admin');setReady(true);});
+    const{data:{subscription}}=sb.auth.onAuthStateChange((ev,session)=>{const u=session?.user??null;setUser(u);if(ev==='SIGNED_IN')setMode('admin');if(ev==='SIGNED_OUT'){setMode('landing');setATab('dashboard');}});
+    return()=>subscription.unsubscribe();
+  },[]);
+
+  useEffect(()=>{if(!CONFIGURED)return;dbAreas().then(setAreas).catch(()=>{});},[]);
+
+  const loadOrders=useCallback(async(isRef=false)=>{if(isRef)setRef(true);else setOL(true);try{setOrders(await dbOrders());}finally{setRef(false);setOL(false);}},[ ]);
+  useEffect(()=>{if(user&&mode==='admin')loadOrders();},[user,mode]);
+
+  const reloadAreas=useCallback(async()=>{setAreas(await dbAreas());},[]);
+
+  async function handleCreate(data){const area=areas.find(a=>a.id===data.areaId),rate=area?.rate||0;const o=await dbCreate({...data,areaName:area?.name||'Unknown',rate,bill:rate*data.numClothes});setOrders(p=>[o,...p]);return o;}
+  async function handleDone(id){const u=await dbPatch(id,{status:'fulfilled',ironingDoneAt:new Date().toISOString()});setOrders(p=>p.map(o=>o.id===id?u:o));showToast('Marked as ironing done');}
+  async function handleApprove(id){const u=await dbPatch(id,{paymentStatus:'completed'});setOrders(p=>p.map(o=>o.id===id?u:o));showToast('Payment approved \u2713');}
+  async function handleReject(id){const u=await dbPatch(id,{paymentStatus:'incomplete',hasScreenshot:false});setOrders(p=>p.map(o=>o.id===id?u:o));showToast('Screenshot rejected \u2014 customer can re-upload');}
+
+  const TABS=[{key:'dashboard',label:'Home',Icon:I.List},{key:'orders',label:'Orders',Icon:I.Pkg},{key:'clients',label:'Clients',Icon:I.Users},{key:'settings',label:'Settings',Icon:I.Gear}];
+  const TITLES={dashboard:'Dashboard',orders:'Orders',clients:'Clients',settings:'Settings'};
+
+  if(!CONFIGURED)return<Setup/>;
+  if(!ready)return<div className="min-h-screen flex items-center justify-center bg-[#F7F6F3]"><I.Spin size={26} className="text-[#1C1B1A]/25"/></div>;
+
+  return<div className="min-h-screen bg-[#F7F6F3]">
+
+    {mode==='landing'&&<div className="min-h-screen flex flex-col justify-center px-5 py-10 fade"><div className="text-center mb-8"><div className="mx-auto w-16 h-16 rounded-[20px] bg-[#1C1B1A] flex items-center justify-center mb-3 shadow-lg"><I.Shirt size={26} className="text-white"/></div><div className="font-bold text-2xl text-[#1C1B1A] tracking-tight">Press Line</div><div className="text-sm text-[#1C1B1A]/50 mt-1">Pickup scheduling &amp; payment tracking</div></div><div className="space-y-3"><button type="button" onClick={()=>setMode('customer')} className="w-full text-left bg-white rounded-2xl border border-[#1C1B1A]/10 p-4 flex items-center gap-4 active:scale-[0.98] transition-transform shadow-sm"><div className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0" style={{background:'#3D5A80'}}><I.Users size={20} className="text-white"/></div><div><div className="font-bold text-[#1C1B1A]">I&rsquo;m a customer</div><div className="text-xs text-[#1C1B1A]/50 mt-0.5">Schedule a pickup or check an existing order</div></div></button><button type="button" onClick={()=>setMode('admin')} className="w-full text-left bg-white rounded-2xl border border-[#1C1B1A]/10 p-4 flex items-center gap-4 active:scale-[0.98] transition-transform shadow-sm"><div className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0" style={{background:'#C1440E'}}><I.Lock size={20} className="text-white"/></div><div><div className="font-bold text-[#1C1B1A]">I&rsquo;m the admin</div><div className="text-xs text-[#1C1B1A]/50 mt-0.5">Manage orders, payments &amp; clients</div></div></button></div></div>}
+
+    {mode==='customer'&&<><Header title="Press Line" onBack={()=>setMode('landing')}/><div className="px-4 pt-4 pb-24"><div className="flex gap-1 mb-5 bg-[#1C1B1A]/6 rounded-full p-1">{[['book','Book pickup'],['orders','My orders']].map(([k,l])=>{const on=cTab===k;return<button key={k} type="button" onClick={()=>setCTab(k)} aria-pressed={on} className={`flex-1 text-sm font-semibold rounded-full py-2 transition-all active:scale-[0.98] ${on?'bg-white text-[#1C1B1A] shadow-sm':'text-[#1C1B1A]/50'}`}>{l}</button>;})}</div>{cTab==='book'?<BookingForm key="book" areas={areas} onCreateOrder={handleCreate} context="customer"/>:<MyOrders/>}</div></>}
+
+    {mode==='admin'&&!user&&<><Header title="Admin" onBack={()=>setMode('landing')}/><AuthGate/></>}
+
+    {mode==='admin'&&user&&<><Header title={TITLES[aTab]} onBack={()=>{setMode('landing');setATab('dashboard');}} onRefresh={()=>loadOrders(true)} refreshing={refreshing}/><div className="px-4 pt-4 pb-28">{oLoading?<div className="flex justify-center py-12"><I.Spin size={24} className="text-[#1C1B1A]/25"/></div>:<>{aTab==='dashboard'&&<Dashboard orders={orders}/>}{aTab==='orders'&&<OrdersTab orders={orders} onMarkDone={handleDone} onApprove={handleApprove} onReject={handleReject} onNew={()=>setShowNew(true)}/>}{aTab==='clients'&&<ClientsTab orders={orders}/>}{aTab==='settings'&&<SettingsTab areas={areas} onAreasChange={reloadAreas} showToast={showToast} user={user}/>}</>}</div><TabBar tabs={TABS} active={aTab} onChange={setATab}/>{showNew&&<div className="fixed inset-0 z-50 bg-black/50 flex items-end justify-center" onClick={e=>e.target===e.currentTarget&&setShowNew(false)}><div className="bg-[#F7F6F3] rounded-t-3xl w-full max-h-[92dvh] overflow-y-auto slide pb-safeXL"><div className="flex items-center justify-between px-5 pt-5 pb-3"><div className="font-bold text-[#1C1B1A] text-base">New order</div><button type="button" onClick={()=>setShowNew(false)} className="p-1 text-[#1C1B1A]/50 active:opacity-60"><I.X size={20}/></button></div><div className="px-5"><BookingForm areas={areas} onCreateOrder={handleCreate} context="admin" onDone={()=>{setShowNew(false);showToast('Order added');}}/></div></div></div>}</>}
+
+    <Toast text={toast}/>
+  </div>;
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
