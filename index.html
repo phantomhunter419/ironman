@@ -35,8 +35,14 @@
 </head>
 <body>
 <div id="root"></div>
-<script type="text/babel" data-presets="react">
-/* @jsxRuntime classic */
+<script>
+  Babel.registerPreset('react-classic', {
+    presets: [
+      [Babel.availablePresets['react'], { runtime: 'classic' }]
+    ]
+  });
+</script>
+<script type="text/babel" data-presets="react-classic">
 const{useState,useEffect,useCallback,useRef,useMemo}=React;
 
 /* ═══════════════════════════════════════
