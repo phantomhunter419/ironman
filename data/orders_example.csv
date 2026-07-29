@@ -1,0 +1,6 @@
+name,phone,area_name,num_clothes,rate,bill,scheduled_at,drop_at,payment_timing,payment_status,cart
+Ravi Kumar,9876543210,Zone A,5,8,40,2026-08-01 10:00:00+05:30,2026-08-02 18:00:00+05:30,dropoff,incomplete,"[{""item"":""Shirt"",""qty"":3},{""item"":""Trouser"",""qty"":2}]"
+Priya Singh,9123456789,Zone B,3,10,30,2026-08-02 09:30:00+05:30,2026-08-03 17:00:00+05:30,pickup,incomplete,"[{""item"":""Saree"",""qty"":1},{""item"":""Blouse"",""qty"":2}]"
+Amit Patel,9234567890,Zone A,4,8,32,2026-08-01 14:00:00+05:30,2026-08-02 19:00:00+05:30,dropoff,completed,"[{""item"":""Shirt"",""qty"":2},{""item"":""Jacket"",""qty"":1},{""item"":""Trouser"",""qty"":1}]"
+Sneha Gupta,9345678901,Zone C,6,12,72,2026-08-03 11:00:00+05:30,2026-08-04 20:00:00+05:30,dropoff,pending,"[{""item"":""Dress"",""qty"":2},{""item"":""Shirt"",""qty"":3},{""item"":""Skirt"",""qty"":1}]"
+Vikram Sharma,9456789012,Zone B,2,10,20,2026-08-02 16:00:00+05:30,,pickup,incomplete,"[{""item"":""Shirt"",""qty"":2}]"
